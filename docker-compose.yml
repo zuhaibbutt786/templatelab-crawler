@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: templatelab
+      POSTGRES_PASSWORD: templatelab
+      POSTGRES_DB: templatelab
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U templatelab -d templatelab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://templatelab:templatelab@db:5432/templatelab
+      CRAWL_DELAY: "2"
+      MAX_CONCURRENT_REQUESTS: "2"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  crawler:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://templatelab:templatelab@db:5432/templatelab
+      CRAWL_DELAY: "2"
+      MAX_CONCURRENT_REQUESTS: "2"
+      REQUEST_TIMEOUT: "30"
+      MAX_RETRIES: "3"
+      CRAWL_INTERVAL_HOURS: "168"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - crawl
+    command: python -m crawler.crawler --max-pages 50
+
+volumes:
+  pgdata:
